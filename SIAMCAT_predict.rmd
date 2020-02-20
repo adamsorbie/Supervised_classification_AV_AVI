@@ -1,0 +1,111 @@
+---
+title: "SIAMCAT Classification"
+author: "Adam Sorbie"
+date: "19/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Supervised Classification of Different environments in AV and AVI mice 
+
+### Libraries
+
+```{r include=FALSE}
+library(SIAMCAT)
+library(microbiomeutilities)
+library(microbiome)
+source("import_phyloseq.R")
+```
+
+
+### Load data 
+
+```{r}
+# load datasets as phyloseq objects and format taxonomy using microbio
+caecal.dataset <- prep_4_phyloseq("CC/OTUs_Table-norm-rel-tax.tab", "CC/mapping_file_wo_controls.tab")
+caecal.dataset <- format_to_besthit(caecal.dataset)
+
+tissue.dataset <- prep_4_phyloseq("tissue/OTUs_Table-norm-rel-tax.tab", "tissue/mapping_file_wo_controls.tab")
+tissue.dataset <- format_to_besthit(tissue.dataset)
+
+```
+
+## Load data into SIAMCAT
+
+```{r}
+library(SIAMCAT)
+
+sc.obj.cc <- siamcat(phyloseq = caecal.dataset, label = "Phenotype", case = "T" )
+sc.obj.t <- siamcat(phyloseq = tissue.dataset, label = "Phenotype", case = "T" )
+```
+
+## Filtering
+
+Remove low abundant/irrelevant features
+```{r}
+sc.obj.cc <- filter.features(sc.obj.cc, filter.method = 'abundance', cutoff = 0.01)
+sc.obj.cc <- filter.features(sc.obj.cc, filter.method = 'prevalence', cutoff = 0.05)
+
+sc.obj.t <- filter.features(sc.obj.t, filter.method = 'abundance', cutoff = 0.01)
+sc.obj.t <- filter.features(sc.obj.t, filter.method = 'prevalence', cutoff = 0.05)
+```
+
+## Normalization 
+
+```{r}
+sc.obj.cc <- normalize.features(sc.obj.cc, norm.method = 'log.std')
+sc.obj.t <- normalize.features(sc.obj.t, norm.method = 'log.std')
+```
+
+## Create splits 
+
+```{r}
+sc.obj.cc <- create.data.split(sc.obj.cc, num.folds = 5, num.resample = 5)
+sc.obj.t <- create.data.split(sc.obj.t, num.folds = 5, num.resample = 5)
+```
+
+
+## Train models 
+
+```{r}
+sc.obj.cc <- train.model(sc.obj.cc, method = "lasso")
+sc.obj.t <- train.model(sc.obj.t, method = "lasso")
+```
+
+
+## Make predictions 
+
+```{r}
+sc.obj.cc <- make.predictions(sc.obj.cc)
+sc.obj.t <- make.predictions(sc.obj.t)
+```
+
+
+## Evaluate predictions 
+
+```{r}
+sc.obj.cc <- evaluate.predictions(sc.obj.cc)
+sc.obj.t <- evaluate.predictions(sc.obj.t)
+
+model.evaluation.plot(sc.obj.cc, fn.plot = "CC_roc.pdf")
+model.interpretation.plot(sc.obj.cc, "cc_features.pdf")
+model.evaluation.plot(sc.obj.t, fn.plot = "tissue_roc.pdf")
+model.interpretation.plot(sc.obj.t, fn.plot = "tissue_features.pdf")
+
+```
+
+# Associations 
+
+```{r}
+caecal.dataset <- transform(caecal.dataset, 'compositional')
+tissue.dataset <- transform(tissue.dataset, 'compositional')
+
+sc.obj.cc.as <- siamcat(phyloseq = caecal.dataset, label = 'Phenotype', case ='T')
+sc.obj.t.as <- siamcat(phyloseq = tissue.dataset, label = 'Phenotype', case ='T')
+check.associations(sc.obj.cc.as, feature.type = "original", fn.plot = "cc_associations.pdf")
+check.associations(sc.obj.t.as, feature.type = "original", fn.plot = "tissue_associations.pdf")
+```
+
